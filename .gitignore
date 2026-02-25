@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Screenshots output
+screenshots/
+
+# Generated images
+og-image.png
+
+# Project-specific artifacts
+analyze_kerykeion.sh
+seo_report_kerykeion.md
