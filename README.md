@@ -6,11 +6,13 @@ MCP-SEO gives any LLM agent — or human — a complete suite of SEO auditing to
 
 ## Features
 
-- **18 CLI commands** covering on-page SEO, technical SEO, performance, and content analysis
-- **15 MCP tools** exposing the same capabilities to any MCP-compatible client (Claude Desktop, Cursor, OpenCode, ...)
+- **21 CLI commands** covering on-page SEO, technical SEO, performance, accessibility, and content analysis
+- **18 MCP tools** exposing the same capabilities to any MCP-compatible client (Claude Desktop, Cursor, OpenCode, ...)
 - **Headless browser rendering** via Playwright/Chromium for JavaScript-heavy pages
 - **Lighthouse-style scoring** (0-100) with per-category breakdowns
+- **Multi-page site crawler** with duplicate detection and robots.txt respect
 - **Structured output** — every analyzer returns Pydantic models (JSON) and Markdown reports
+- **Configurable** — all timeouts and thresholds overridable via `MCP_SEO_*` env vars
 - **pip-installable** — `pip install mcp-seo` and you're ready to go
 
 ## Installation
@@ -52,6 +54,11 @@ mcp-seo robots https://example.com         # robots.txt rules and directives
 mcp-seo structured-data https://example.com # JSON-LD, Microdata, RDFa
 mcp-seo performance https://example.com    # Core Web Vitals (TTFB, FCP, LCP)
 mcp-seo mobile https://example.com         # Viewport, tap targets, font sizes
+mcp-seo url-structure https://example.com   # URL length, depth, tracking params
+mcp-seo accessibility https://example.com   # ARIA, landmarks, skip-nav, score
+
+# Site crawler
+mcp-seo crawl-site https://example.com     # Crawl site, find duplicates
 
 # Page fetching
 mcp-seo crawl https://example.com          # Rendered HTML (JS executed)
@@ -120,8 +127,11 @@ Add to your `opencode.json`:
 | `analyze_structured_data` | JSON-LD, Microdata, RDFa extraction                  |
 | `analyze_performance`     | TTFB, FCP, LCP, DOM nodes, requests, resource sizes  |
 | `analyze_mobile`          | Viewport, font sizes, tap targets, horizontal scroll |
+| `analyze_url_structure`   | URL length, depth, separators, tracking params       |
+| `analyze_accessibility`   | ARIA landmarks, skip-nav, forms, images, score       |
 | `lighthouse_audit`        | Lighthouse-style scoring (0-100) per category        |
 | `full_seo_report`         | Comprehensive report combining all analyses          |
+| `crawl_site`              | Multi-page crawler with cross-page analysis          |
 
 ## For LLM Agents
 

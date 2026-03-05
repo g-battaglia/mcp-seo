@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-seo"
-version = "0.1.0"
+version = "0.3.0"
 description = "Open-source SEO analysis toolkit for LLM agents — CLI + MCP server."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,6 +35,7 @@ dependencies = [
     "lxml>=5.0.0",
     "pydantic>=2.0.0",
     "mcp[cli]>=1.0.0",
+    "defusedxml>=0.7.0",
 ]
 
 [project.urls]
@@ -48,4 +49,35 @@ mcp-seo = "mcp_seo.cli:main"
 [dependency-groups]
 dev = [
     "poethepoet>=0.25.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "E501",    # line too long — handled by formatter
+    "RUF001",  # ambiguous unicode
+    "RUF002",  # ambiguous unicode
+    "RUF003",  # ambiguous unicode
+    "B008",    # function call in default argument (click uses this pattern)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mcp_seo"]
+
+[tool.poe.tasks]
+lint = "ruff check mcp_seo/ tests/ --fix"
+format = "ruff format mcp_seo/ tests/"
+test = "pytest tests/ -v"
+check = ["lint", "format", "test"]
+setup = "playwright install chromium"

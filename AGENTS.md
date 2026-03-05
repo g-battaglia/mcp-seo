@@ -36,7 +36,9 @@ Start with `mcp-seo mcp` — all tools are exposed as MCP tools that accept a `u
 
 | CLI Command              | MCP Tool     | Description                                         |
 | ------------------------ | ------------ | --------------------------------------------------- |
-| `mcp-seo crawl <url>`   | `crawl`      | Render page with headless Chromium, return full HTML |
+| `mcp-seo url-structure <url>`  | `analyze_url_structure`  | URL length, depth, separators, tracking params     |
+| `mcp-seo accessibility <url>`  | `analyze_accessibility`  | ARIA landmarks, skip-nav, forms, images, score     |
+| `mcp-seo crawl <url>`          | `crawl`                 | Render page with headless Chromium, return full HTML |
 | `mcp-seo fetch <url>`   | `fetch_page` | Fetch raw HTTP response as JSON                     |
 
 ### On-Page SEO
@@ -69,6 +71,7 @@ Start with `mcp-seo mcp` — all tools are exposed as MCP tools that accept a `u
 
 | CLI Command                     | MCP Tool                  | Description                                          |
 | ------------------------------- | ------------------------- | ---------------------------------------------------- |
+| `mcp-seo crawl-site <url>`     |                         | Crawl entire site, cross-page duplicate detection  |
 | `mcp-seo lighthouse <url>`     | `lighthouse_audit`        | Lighthouse-style scoring (0-100) per category        |
 | `mcp-seo report <url>`         | `full_seo_report`         | Full report combining all analyses                   |
 
@@ -165,8 +168,9 @@ All analyzers return Pydantic models that can be serialized to JSON for programm
 
 - If Playwright browsers are not installed, run `mcp-seo setup` first
 - URLs without a scheme (`http://` or `https://`) will automatically be prefixed with `https://`
-- Network timeouts are set to 30 seconds by default
+- Network timeouts are set to 30 seconds by default (override with `MCP_SEO_TIMEOUT` env var)
 - Failed fetches return meaningful error messages
+- Dangerous URL schemes (file://, javascript://, data://) are blocked
 
 ---
 
@@ -174,25 +178,31 @@ All analyzers return Pydantic models that can be serialized to JSON for programm
 
 ```
 mcp_seo/
-├── __init__.py              # Package init
+├── __init__.py              # Package init (version from importlib.metadata)
 ├── __main__.py              # python -m mcp_seo entry point
-├── cli.py                   # CLI built with click
+├── cli.py                   # CLI built with click (--output/-o on all commands)
 ├── mcp_server.py            # MCP server (FastMCP)
+├── config.py                # Centralized Config class (env var overrides)
 ├── browser.py               # Headless browser management (Playwright)
 ├── fetcher.py               # HTTP fetching utilities (httpx)
+├── crawler.py               # Multi-page site crawler with cross-page analysis
+├── report.py                # Shared full-report assembly (CLI + MCP)
+├── utils.py                 # URL helpers, HTML caching, logging
 ├── py.typed                 # PEP 561 type marker
 └── analyzers/
     ├── __init__.py
     ├── meta.py              # Meta tags analysis
     ├── headings.py          # Heading hierarchy analysis
-    ├── links.py             # Link analysis
-    ├── images.py            # Image optimization analysis
+    ├── links.py             # Link analysis (parallel broken-link checking)
+    ├── images.py            # Image optimization analysis (<picture>/<source>)
     ├── headers.py           # HTTP headers analysis
-    ├── sitemap.py           # Sitemap discovery & validation
+    ├── sitemap.py           # Sitemap discovery & validation (defusedxml)
     ├── robots.py            # robots.txt analysis
     ├── structured_data.py   # JSON-LD / Microdata / RDFa extraction
     ├── performance.py       # Core Web Vitals measurement
     ├── content.py           # Content quality analysis
     ├── mobile.py            # Mobile-friendliness analysis
-    └── lighthouse.py        # Lighthouse-style scoring engine
+    ├── lighthouse.py        # Lighthouse-style scoring engine
+    ├── url_structure.py     # URL structure analysis (depth, params, keywords)
+    └── accessibility.py     # Accessibility analysis (ARIA, landmarks, forms)
 ```

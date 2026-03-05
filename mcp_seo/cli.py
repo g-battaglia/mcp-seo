@@ -5,33 +5,29 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import click
 
-from mcp_seo.fetcher import fetch
-from mcp_seo.browser import render_page_sync, take_screenshot_sync
+from mcp_seo.utils import ensure_url, get_html, get_logger
+
+logger = get_logger("cli")
 
 
-def _ensure_url(url: str) -> str:
-    """Ensure URL has a scheme."""
-    if not url.startswith(("http://", "https://")):
-        url = f"https://{url}"
-    return url
+# ── Output helper ─────────────────────────────────────────────
 
 
-def _get_html(url: str, *, rendered: bool = True) -> tuple[str, str]:
-    """Get HTML from URL. Returns (html, final_url)."""
-    url = _ensure_url(url)
-    if rendered:
-        html = render_page_sync(url)
-        return html, url
+def _output(text: str, output_file: str | None) -> None:
+    """Write text to stdout or to a file if --output is specified."""
+    if output_file:
+        path = Path(output_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        click.echo(f"Output written to: {output_file}", err=True)
     else:
-        result = fetch(url)
-        return result.body, result.final_url
+        click.echo(text)
 
 
 # ── CLI Group ─────────────────────────────────────────────────
@@ -39,8 +35,13 @@ def _get_html(url: str, *, rendered: bool = True) -> tuple[str, str]:
 
 @click.group()
 @click.version_option(package_name="mcp-seo")
-def cli() -> None:
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
+def cli(verbose: bool) -> None:
     """MCP-SEO — Open-source SEO analysis toolkit for AI agents."""
+    if verbose:
+        import logging
+
+        logging.getLogger("mcp_seo").setLevel(logging.DEBUG)
 
 
 # ── Setup ─────────────────────────────────────────────────────
@@ -57,20 +58,45 @@ def setup() -> None:
 
 @cli.command()
 @click.argument("url")
-def crawl(url: str) -> None:
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def crawl(url: str, output_file: str | None) -> None:
     """Render a page with headless browser and return full HTML."""
-    url = _ensure_url(url)
+    from mcp_seo.browser import render_page_sync
+
+    url = ensure_url(url)
     html = render_page_sync(url)
-    click.echo(html)
+    _output(html, output_file)
 
 
 @cli.command("fetch")
 @click.argument("url")
-def fetch_cmd(url: str) -> None:
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def fetch_cmd(url: str, json_out: bool, output_file: str | None) -> None:
     """Fetch raw HTTP response without JS rendering."""
-    url = _ensure_url(url)
+    from mcp_seo.fetcher import fetch
+
+    url = ensure_url(url)
     result = fetch(url)
-    click.echo(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))
+    if json_out:
+        _output(json.dumps(result.model_dump(), indent=2, ensure_ascii=False), output_file)
+    else:
+        parts = [
+            f"# HTTP Fetch: {url}",
+            f"**Status**: {result.status_code}",
+            f"**Final URL**: {result.final_url}",
+            f"**Content-Type**: {result.headers.get('content-type', 'N/A')}",
+            f"**SSL Valid**: {result.ssl_valid}",
+            f"**HTTP Version**: {result.http_version or 'N/A'}",
+        ]
+        if result.redirect_chain:
+            parts.append(f"**Redirects**: {len(result.redirect_chain)}")
+            for r in result.redirect_chain:
+                parts.append(f"  - {r['status']} → {r['url']}")
+        if result.ssl_error:
+            parts.append(f"**SSL Error**: {result.ssl_error}")
+        parts.append(f"\n**Body length**: {len(result.body)} chars")
+        _output("\n".join(parts), output_file)
 
 
 # ── On-Page SEO ───────────────────────────────────────────────
@@ -78,52 +104,83 @@ def fetch_cmd(url: str) -> None:
 
 @cli.command()
 @click.argument("url")
-def meta(url: str) -> None:
-    """Analyze meta tags (title, description, OG, Twitter, canonical)."""
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def meta(url: str, json_out: bool, output_file: str | None) -> None:
+    """Analyze meta tags (title, description, OG, Twitter, canonical, hreflang)."""
     from mcp_seo.analyzers.meta import analyze_meta, format_meta_report
 
-    html, final_url = _get_html(url)
-    click.echo(format_meta_report(analyze_meta(html, final_url)))
+    html, final_url = get_html(url)
+    result = analyze_meta(html, final_url)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_meta_report(result), output_file)
 
 
 @cli.command()
 @click.argument("url")
-def headings(url: str) -> None:
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def headings(url: str, json_out: bool, output_file: str | None) -> None:
     """Analyze heading hierarchy (h1-h6)."""
     from mcp_seo.analyzers.headings import analyze_headings, format_headings_report
 
-    html, _ = _get_html(url)
-    click.echo(format_headings_report(analyze_headings(html)))
+    html, _ = get_html(url)
+    result = analyze_headings(html)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_headings_report(result), output_file)
 
 
 @cli.command()
 @click.argument("url")
-def links(url: str) -> None:
+@click.option("--check-broken", "-b", is_flag=True, help="Check for broken links (slower).")
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def links(url: str, check_broken: bool, json_out: bool, output_file: str | None) -> None:
     """Analyze all links (internal, external, broken)."""
     from mcp_seo.analyzers.links import analyze_links, format_links_report
 
-    html, final_url = _get_html(url)
-    click.echo(format_links_report(analyze_links(html, final_url)))
+    html, final_url = get_html(url)
+    result = analyze_links(html, final_url, check_broken=check_broken)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_links_report(result), output_file)
 
 
 @cli.command()
 @click.argument("url")
-def images(url: str) -> None:
-    """Audit images (alt text, dimensions, format, lazy loading)."""
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def images(url: str, json_out: bool, output_file: str | None) -> None:
+    """Audit images (alt text, dimensions, format, lazy loading, srcset)."""
     from mcp_seo.analyzers.images import analyze_images, format_images_report
 
-    html, final_url = _get_html(url)
-    click.echo(format_images_report(analyze_images(html, final_url)))
+    html, final_url = get_html(url)
+    result = analyze_images(html, final_url)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_images_report(result), output_file)
 
 
 @cli.command()
 @click.argument("url")
-def content(url: str) -> None:
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def content(url: str, json_out: bool, output_file: str | None) -> None:
     """Analyze page content (word count, readability, keywords)."""
     from mcp_seo.analyzers.content import analyze_content, format_content_report
 
-    html, _ = _get_html(url)
-    click.echo(format_content_report(analyze_content(html)))
+    html, _ = get_html(url)
+    result = analyze_content(html)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_content_report(result), output_file)
 
 
 # ── Technical SEO ─────────────────────────────────────────────
@@ -131,49 +188,113 @@ def content(url: str) -> None:
 
 @cli.command()
 @click.argument("url")
-def headers(url: str) -> None:
-    """Inspect HTTP response headers (caching, security, redirects)."""
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def headers(url: str, json_out: bool, output_file: str | None) -> None:
+    """Inspect HTTP response headers (caching, security, SSL, cookies)."""
     from mcp_seo.analyzers.headers import analyze_headers, format_headers_report
+    from mcp_seo.fetcher import fetch
 
-    url = _ensure_url(url)
-    result = fetch(url)
+    url = ensure_url(url)
+    fetch_result = fetch(url)
     analysis = analyze_headers(
-        result.headers, result.status_code, result.redirect_chain
+        fetch_result.headers,
+        fetch_result.status_code,
+        fetch_result.redirect_chain,
+        ssl_valid=fetch_result.ssl_valid,
+        ssl_error=fetch_result.ssl_error,
+        http_version=fetch_result.http_version,
     )
-    click.echo(format_headers_report(analysis))
+    if json_out:
+        _output(analysis.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_headers_report(analysis), output_file)
 
 
 @cli.command()
 @click.argument("url")
-def sitemap(url: str) -> None:
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def sitemap(url: str, json_out: bool, output_file: str | None) -> None:
     """Discover, parse, and validate XML sitemaps."""
     from mcp_seo.analyzers.sitemap import analyze_sitemap, format_sitemap_report
 
-    url = _ensure_url(url)
-    click.echo(format_sitemap_report(analyze_sitemap(url)))
+    url = ensure_url(url)
+    result = analyze_sitemap(url)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_sitemap_report(result), output_file)
 
 
 @cli.command()
 @click.argument("url")
-def robots(url: str) -> None:
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def robots(url: str, json_out: bool, output_file: str | None) -> None:
     """Fetch and analyze robots.txt."""
     from mcp_seo.analyzers.robots import analyze_robots, format_robots_report
 
-    url = _ensure_url(url)
-    click.echo(format_robots_report(analyze_robots(url)))
+    url = ensure_url(url)
+    result = analyze_robots(url)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_robots_report(result), output_file)
 
 
 @cli.command("structured-data")
 @click.argument("url")
-def structured_data(url: str) -> None:
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def structured_data(url: str, json_out: bool, output_file: str | None) -> None:
     """Extract and validate JSON-LD, Microdata, and RDFa structured data."""
     from mcp_seo.analyzers.structured_data import (
         analyze_structured_data,
         format_structured_data_report,
     )
 
-    html, _ = _get_html(url)
-    click.echo(format_structured_data_report(analyze_structured_data(html)))
+    html, _ = get_html(url)
+    result = analyze_structured_data(html)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_structured_data_report(result), output_file)
+
+
+# ── URL Structure & Accessibility ─────────────────────────────
+
+
+@cli.command("url-structure")
+@click.argument("url")
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def url_structure(url: str, json_out: bool, output_file: str | None) -> None:
+    """Analyze URL structure (length, depth, separators, tracking params)."""
+    from mcp_seo.analyzers.url_structure import analyze_url_structure, format_url_structure_report
+
+    url = ensure_url(url)
+    result = analyze_url_structure(url)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_url_structure_report(result), output_file)
+
+
+@cli.command()
+@click.argument("url")
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def accessibility(url: str, json_out: bool, output_file: str | None) -> None:
+    """Analyze accessibility (ARIA, landmarks, skip-nav, forms, images)."""
+    from mcp_seo.analyzers.accessibility import analyze_accessibility, format_accessibility_report
+
+    html, _ = get_html(url)
+    result = analyze_accessibility(html)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_accessibility_report(result), output_file)
 
 
 # ── Performance ───────────────────────────────────────────────
@@ -181,25 +302,37 @@ def structured_data(url: str) -> None:
 
 @cli.command()
 @click.argument("url")
-def performance(url: str) -> None:
-    """Measure Core Web Vitals (TTFB, FCP, LCP) and page load metrics."""
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def performance(url: str, json_out: bool, output_file: str | None) -> None:
+    """Measure Core Web Vitals (TTFB, FCP, LCP, CLS, TBT)."""
     from mcp_seo.analyzers.performance import (
         analyze_performance,
         format_performance_report,
     )
 
-    url = _ensure_url(url)
-    click.echo(format_performance_report(analyze_performance(url)))
+    url = ensure_url(url)
+    result = analyze_performance(url)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_performance_report(result), output_file)
 
 
 @cli.command()
 @click.argument("url")
-def mobile(url: str) -> None:
-    """Analyze mobile-friendliness (viewport, tap targets, font sizes)."""
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def mobile(url: str, json_out: bool, output_file: str | None) -> None:
+    """Analyze mobile-friendliness (viewport, tap targets, font sizes, interstitials)."""
     from mcp_seo.analyzers.mobile import analyze_mobile, format_mobile_report
 
-    url = _ensure_url(url)
-    click.echo(format_mobile_report(analyze_mobile(url)))
+    url = ensure_url(url)
+    result = analyze_mobile(url)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_mobile_report(result), output_file)
 
 
 # ── Reports ───────────────────────────────────────────────────
@@ -207,62 +340,79 @@ def mobile(url: str) -> None:
 
 @cli.command()
 @click.argument("url")
-def lighthouse(url: str) -> None:
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def lighthouse(url: str, json_out: bool, output_file: str | None) -> None:
     """Run a Lighthouse-style SEO audit with category scoring (0-100)."""
-    from mcp_seo.analyzers.lighthouse import run_lighthouse, format_lighthouse_report
+    from mcp_seo.analyzers.lighthouse import format_lighthouse_report, run_lighthouse
 
-    html, final_url = _get_html(url)
-    click.echo(format_lighthouse_report(run_lighthouse(html, final_url)))
+    html, final_url = get_html(url)
+    result = run_lighthouse(html, final_url)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_lighthouse_report(result), output_file)
 
 
 @cli.command()
 @click.argument("url")
-def report(url: str) -> None:
-    """Generate a comprehensive SEO report combining all analyses."""
-    from mcp_seo.analyzers.meta import analyze_meta, format_meta_report
-    from mcp_seo.analyzers.headings import analyze_headings, format_headings_report
-    from mcp_seo.analyzers.links import analyze_links, format_links_report
-    from mcp_seo.analyzers.images import analyze_images, format_images_report
-    from mcp_seo.analyzers.headers import analyze_headers, format_headers_report
-    from mcp_seo.analyzers.structured_data import (
-        analyze_structured_data,
-        format_structured_data_report,
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def report(url: str, json_out: bool, output_file: str | None) -> None:
+    """Generate a comprehensive SEO report combining ALL analyses."""
+    from mcp_seo.report import generate_full_report
+
+    def _progress(msg: str) -> None:
+        click.echo(msg, err=True)
+
+    markdown, results = generate_full_report(
+        url,
+        progress_callback=_progress,
     )
-    from mcp_seo.analyzers.content import analyze_content, format_content_report
-    from mcp_seo.analyzers.lighthouse import run_lighthouse, format_lighthouse_report
 
-    url = _ensure_url(url)
-    click.echo(f"# Comprehensive SEO Report")
-    click.echo(f"**URL**: {url}")
-    click.echo(f"**Date**: {datetime.now().isoformat()}")
-    click.echo("")
+    if json_out:
+        report_dict: dict[str, object] = {"url": results.url, "date": results.date}
+        for field in (
+            "headers",
+            "meta",
+            "headings",
+            "links",
+            "images",
+            "structured_data",
+            "content",
+            "sitemap",
+            "robots",
+            "performance",
+            "mobile",
+            "lighthouse",
+        ):
+            val = getattr(results, field, None)
+            if val is not None:
+                report_dict[field] = val.model_dump()
+        _output(json.dumps(report_dict, indent=2, ensure_ascii=False), output_file)
+    else:
+        _output(markdown, output_file)
 
-    # 1. HTTP headers
-    click.echo("Analyzing HTTP headers...")
-    fetch_result = fetch(url)
-    headers_analysis = analyze_headers(
-        fetch_result.headers, fetch_result.status_code, fetch_result.redirect_chain
-    )
-    click.echo(format_headers_report(headers_analysis))
 
-    # 2. Render page
-    click.echo("Rendering page with headless browser...")
-    html = render_page_sync(url)
-    final_url = url
+# ── Site Crawler ──────────────────────────────────────────────
 
-    # 3-8. Analyzers
-    click.echo(format_meta_report(analyze_meta(html, final_url)))
-    click.echo(format_headings_report(analyze_headings(html)))
-    click.echo(format_links_report(analyze_links(html, final_url)))
-    click.echo(format_images_report(analyze_images(html, final_url)))
-    click.echo(format_structured_data_report(analyze_structured_data(html)))
-    click.echo(format_content_report(analyze_content(html)))
 
-    # 9. Lighthouse
-    click.echo(format_lighthouse_report(run_lighthouse(html, final_url)))
+@cli.command("crawl-site")
+@click.argument("url")
+@click.option("--max-pages", "-n", default=50, help="Maximum pages to crawl.")
+@click.option("--json-output", "-j", "json_out", is_flag=True, help="Output as JSON.")
+@click.option("--output", "-o", "output_file", default=None, help="Write output to file.")
+def crawl_site(url: str, max_pages: int, json_out: bool, output_file: str | None) -> None:
+    """Crawl a website and analyze all discovered pages."""
+    from mcp_seo.crawler import crawl_site as _crawl
+    from mcp_seo.crawler import format_crawl_report
 
-    click.echo("---")
-    click.echo("Report complete. Use individual commands for deeper analysis.")
+    url = ensure_url(url)
+    result = _crawl(url, max_pages=max_pages)
+    if json_out:
+        _output(result.model_dump_json(indent=2), output_file)
+    else:
+        _output(format_crawl_report(result), output_file)
 
 
 # ── Screenshot & OG Image ─────────────────────────────────────
@@ -272,14 +422,14 @@ def report(url: str) -> None:
 @click.argument("url")
 def screenshot(url: str) -> None:
     """Take a full-page screenshot and save to ./screenshots/."""
-    url = _ensure_url(url)
+    from mcp_seo.browser import take_screenshot_sync
+
+    url = ensure_url(url)
     screenshots_dir = Path("screenshots")
     screenshots_dir.mkdir(exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = (
-        url.replace("https://", "").replace("http://", "").replace("/", "_")[:50]
-    )
+    safe_name = url.replace("https://", "").replace("http://", "").replace("/", "_")[:50]
     output_path = str(screenshots_dir / f"{safe_name}_{timestamp}.png")
 
     take_screenshot_sync(url, output_path)
@@ -287,12 +437,16 @@ def screenshot(url: str) -> None:
 
 
 @cli.command("og-image")
-@click.option("-o", "--output", default="og-image.png", help="Output file path.")
+@click.option("--og-output", "-o", "output", default="og-image.png", help="Output file path.")
 @click.option("-t", "--title", default="My Project", help="Title text.")
 @click.option("-s", "--subtitle", default="Project Subtitle", help="Subtitle text.")
 def og_image(output: str, title: str, subtitle: str) -> None:
     """Generate an OG image (1200x630) with customizable title and subtitle."""
     import asyncio
+    from html import escape
+
+    safe_title = escape(title)
+    safe_subtitle = escape(subtitle)
 
     html_template = f"""<!DOCTYPE html>
 <html>
@@ -326,15 +480,13 @@ def og_image(output: str, title: str, subtitle: str) -> None:
 <body>
     <div class="bg-glow"></div>
     <div class="content">
-        <h1 class="logo">{title}</h1>
-        <p class="subtitle">{subtitle}</p>
+        <h1 class="logo">{safe_title}</h1>
+        <p class="subtitle">{safe_subtitle}</p>
     </div>
 </body>
 </html>"""
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".html", delete=False, encoding="utf-8"
-    ) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
         f.write(html_template)
         temp_html = f.name
 

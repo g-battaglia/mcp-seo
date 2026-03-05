@@ -1,8 +1,14 @@
-"""HTTP headers analysis: caching, security, redirects."""
+"""HTTP headers analysis: caching, security, SSL, HTTP version, cookies, redirects."""
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel
+
+from mcp_seo.utils import get_logger
+
+logger = get_logger("headers")
 
 
 class HeadersAnalysis(BaseModel):
@@ -19,6 +25,7 @@ class HeadersAnalysis(BaseModel):
     x_powered_by: str | None = None
     content_security_policy: str | None = None
     strict_transport_security: str | None = None
+    hsts_max_age: int | None = None
     x_frame_options: str | None = None
     x_content_type_options: str | None = None
     referrer_policy: str | None = None
@@ -26,6 +33,14 @@ class HeadersAnalysis(BaseModel):
     x_robots_tag: str | None = None
     all_headers: dict[str, str] = {}
     redirect_chain: list[str] = []
+
+    # New fields
+    http_version: str | None = None
+    ssl_valid: bool = True
+    ssl_error: str | None = None
+    has_cookies: bool = False
+    cookie_issues: list[str] = []
+
     issues: list[str] = []
 
 
@@ -33,6 +48,10 @@ def analyze_headers(
     headers: dict[str, str],
     status_code: int = 200,
     redirect_chain: list[str] | None = None,
+    *,
+    ssl_valid: bool = True,
+    ssl_error: str | None = None,
+    http_version: str | None = None,
 ) -> HeadersAnalysis:
     """Analyze HTTP response headers."""
     result = HeadersAnalysis()
@@ -41,6 +60,9 @@ def analyze_headers(
     result.status_code = status_code
     result.all_headers = headers
     result.redirect_chain = redirect_chain or []
+    result.ssl_valid = ssl_valid
+    result.ssl_error = ssl_error
+    result.http_version = http_version
 
     def get(name: str) -> str | None:
         # Case-insensitive header lookup
@@ -65,6 +87,22 @@ def analyze_headers(
     result.permissions_policy = get("permissions-policy")
     result.x_robots_tag = get("x-robots-tag")
 
+    # Parse HSTS max-age
+    if result.strict_transport_security:
+        match = re.search(r"max-age=(\d+)", result.strict_transport_security)
+        if match:
+            result.hsts_max_age = int(match.group(1))
+
+    # SSL issues
+    if not ssl_valid:
+        issues.append(f"CRITICAL: SSL certificate issue — {ssl_error}")
+
+    # Status code issues
+    if status_code >= 400:
+        issues.append(f"CRITICAL: HTTP {status_code} error response")
+    elif status_code >= 300:
+        issues.append(f"HTTP {status_code} redirect response")
+
     # Caching checks
     if not result.cache_control:
         issues.append("Missing Cache-Control header")
@@ -77,6 +115,11 @@ def analyze_headers(
     # Security checks
     if not result.strict_transport_security:
         issues.append("Missing Strict-Transport-Security (HSTS) header")
+    elif result.hsts_max_age is not None and result.hsts_max_age < 31536000:
+        issues.append(
+            f"HSTS max-age too low: {result.hsts_max_age}s (recommended >= 31536000 / 1 year for HSTS preload)"
+        )
+
     if not result.x_content_type_options:
         issues.append("Missing X-Content-Type-Options header")
     if not result.x_frame_options and not result.content_security_policy:
@@ -94,6 +137,30 @@ def analyze_headers(
     if len(result.redirect_chain) > 2:
         issues.append(f"Long redirect chain ({len(result.redirect_chain)} hops)")
 
+    # Distinguish redirect types
+    if result.redirect_chain:
+        if status_code in (301, 308):
+            pass  # Permanent — OK for SEO
+        elif status_code in (302, 307):
+            issues.append(
+                f"Using temporary redirect ({status_code}). Consider 301 for permanent moves to preserve link equity."
+            )
+
+    # Cookie analysis
+    set_cookie = get("set-cookie")
+    if set_cookie:
+        result.has_cookies = True
+        cookie_lower = set_cookie.lower()
+        cookie_issues: list[str] = []
+        if "secure" not in cookie_lower:
+            cookie_issues.append("Cookie missing Secure flag")
+        if "httponly" not in cookie_lower:
+            cookie_issues.append("Cookie missing HttpOnly flag")
+        if "samesite" not in cookie_lower:
+            cookie_issues.append("Cookie missing SameSite attribute")
+        result.cookie_issues = cookie_issues
+        issues.extend(cookie_issues)
+
     result.issues = issues
     return result
 
@@ -103,6 +170,12 @@ def format_headers_report(analysis: HeadersAnalysis) -> str:
     lines = ["# HTTP Headers Analysis", ""]
 
     lines.append(f"**Status Code**: {analysis.status_code}")
+    if analysis.http_version:
+        lines.append(f"**HTTP Version**: {analysis.http_version}")
+    if not analysis.ssl_valid:
+        lines.append(f"**SSL**: INVALID — {analysis.ssl_error}")
+    else:
+        lines.append("**SSL**: Valid")
     lines.append("")
 
     lines.append("## Caching")
@@ -114,13 +187,21 @@ def format_headers_report(analysis: HeadersAnalysis) -> str:
     lines.append("")
 
     lines.append("## Security Headers")
-    lines.append(f"- **HSTS**: {analysis.strict_transport_security or '❌ Not set'}")
-    lines.append(f"- **CSP**: {analysis.content_security_policy or '❌ Not set'}")
-    lines.append(f"- **X-Frame-Options**: {analysis.x_frame_options or '❌ Not set'}")
-    lines.append(f"- **X-Content-Type-Options**: {analysis.x_content_type_options or '❌ Not set'}")
-    lines.append(f"- **Referrer-Policy**: {analysis.referrer_policy or '❌ Not set'}")
-    lines.append(f"- **Permissions-Policy**: {analysis.permissions_policy or '❌ Not set'}")
+    lines.append(f"- **HSTS**: {analysis.strict_transport_security or 'Not set'}")
+    if analysis.hsts_max_age is not None:
+        lines.append(f"  - max-age: {analysis.hsts_max_age}s")
+    lines.append(f"- **CSP**: {analysis.content_security_policy or 'Not set'}")
+    lines.append(f"- **X-Frame-Options**: {analysis.x_frame_options or 'Not set'}")
+    lines.append(f"- **X-Content-Type-Options**: {analysis.x_content_type_options or 'Not set'}")
+    lines.append(f"- **Referrer-Policy**: {analysis.referrer_policy or 'Not set'}")
+    lines.append(f"- **Permissions-Policy**: {analysis.permissions_policy or 'Not set'}")
     lines.append("")
+
+    if analysis.has_cookies and analysis.cookie_issues:
+        lines.append("## Cookie Security")
+        for issue in analysis.cookie_issues:
+            lines.append(f"- {issue}")
+        lines.append("")
 
     if analysis.redirect_chain:
         lines.append("## Redirect Chain")
@@ -134,11 +215,11 @@ def format_headers_report(analysis: HeadersAnalysis) -> str:
 
     lines.append("## All Headers")
     for k, v in analysis.all_headers.items():
-        lines.append(f"- **{k}**: {v}")
+        lines.append(f"- **{k}**: {v[:200]}")
     lines.append("")
 
     if analysis.issues:
-        lines.append("## ⚠️  Issues Found")
+        lines.append("## Issues Found")
         for issue in analysis.issues:
             lines.append(f"- {issue}")
         lines.append("")

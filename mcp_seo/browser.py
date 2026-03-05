@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Literal
 
-from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+from playwright.async_api import Browser, Page, async_playwright
+
+from mcp_seo.utils import get_logger
+
+logger = get_logger("browser")
 
 
 @asynccontextmanager
@@ -59,12 +64,21 @@ async def get_page(
         await context.close()
 
 
-async def render_page(url: str, *, wait_until: str = "networkidle", timeout: int = 30000) -> str:
+async def render_page(
+    url: str,
+    *,
+    wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "networkidle",
+    timeout: int | None = None,
+) -> str:
     """Render a page with a headless browser and return the full HTML."""
-    async with get_browser() as browser:
-        async with get_page(browser) as page:
-            await page.goto(url, wait_until=wait_until, timeout=timeout)
-            return await page.content()
+    from mcp_seo.config import Config
+
+    if timeout is None:
+        timeout = Config.browser_timeout()
+    logger.debug("Rendering page: %s", url)
+    async with get_browser() as browser, get_page(browser) as page:
+        await page.goto(url, wait_until=wait_until, timeout=timeout)
+        return await page.content()
 
 
 async def take_screenshot(
@@ -75,11 +89,11 @@ async def take_screenshot(
     mobile: bool = False,
 ) -> str:
     """Take a screenshot of a URL and save it to output_path."""
-    async with get_browser() as browser:
-        async with get_page(browser, mobile=mobile) as page:
-            await page.goto(url, wait_until="networkidle", timeout=30000)
-            await page.screenshot(path=output_path, full_page=full_page)
-            return output_path
+    logger.debug("Taking screenshot: %s -> %s", url, output_path)
+    async with get_browser() as browser, get_page(browser, mobile=mobile) as page:
+        await page.goto(url, wait_until="networkidle", timeout=30000)
+        await page.screenshot(path=output_path, full_page=full_page)
+        return output_path
 
 
 def render_page_sync(url: str, **kwargs) -> str:

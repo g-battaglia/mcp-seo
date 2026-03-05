@@ -1,3 +1,5 @@
 """MCP-SEO - Open-source SEO analysis toolkit for autonomous LLM agents."""
 
-__version__ = "0.1.0"
+from importlib.metadata import version as _get_version
+
+__version__ = _get_version("mcp-seo")
