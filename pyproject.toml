@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-seo"
-version = "0.3.0"
+version = "1.0.0"
 description = "Open-source SEO analysis toolkit for LLM agents — CLI + MCP server."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "AGPL-3.0-or-later"
+license = "MIT"
 authors = [
     { name = "Giacomo Battaglia", email = "battaglia.giacomo@yahoo.it" },
 ]
@@ -17,7 +17,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
