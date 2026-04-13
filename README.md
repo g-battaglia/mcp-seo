@@ -139,6 +139,16 @@ MCP-SEO is designed to be used autonomously by AI agents. All tools produce stru
 
 See [AGENTS.md](AGENTS.md) for recommended workflows: quick audits, comprehensive audits, competitive analysis, and technical audits.
 
+## Claude Code Skill
+
+MCP-SEO is available as a [Claude Code skill](https://github.com/anthropics/claude-code):
+
+```bash
+npx @anthropic-ai/claude-code skills add g-battaglia/mcp-seo
+```
+
+This installs the mcp-seo skill, giving Claude Code direct access to all 18 SEO analysis tools with recommended audit workflows. The skill auto-triggers on SEO-related prompts and guides the agent to use the right tools for each analysis.
+
 ## Development
 
 ```bash

@@ -18,3 +18,7 @@ og-image.png
 # Project-specific artifacts
 analyze_kerykeion.sh
 seo_report_kerykeion.md
+
+# Claude Code local config (third-party skills, lock files)
+.claude/
+skills-lock.json

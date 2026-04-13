@@ -1,0 +1,106 @@
+{
+  "skill_name": "mcp-seo",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run a quick SEO check on https://example.com",
+      "expected_output": "Should invoke lighthouse_audit or mcp-seo lighthouse to get an overall SEO score. Should report the score and top issues from the tool output. Should not attempt to manually inspect HTML or guess issues.",
+      "assertions": [
+        "Uses lighthouse_audit MCP tool or mcp-seo lighthouse CLI command",
+        "Reports the overall score from tool output",
+        "Identifies top issues by category",
+        "Does not guess SEO issues without running tools"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Analyze the meta tags and heading structure of https://example.com",
+      "expected_output": "Should invoke analyze_meta_tags and analyze_headings as two separate tool calls. Should report title, description, OG tags, canonical from meta analysis, and H1-H6 hierarchy from headings analysis.",
+      "assertions": [
+        "Uses analyze_meta_tags MCP tool or mcp-seo meta CLI command",
+        "Uses analyze_headings MCP tool or mcp-seo headings CLI command",
+        "Reports title tag and meta description findings",
+        "Reports heading hierarchy findings",
+        "Makes both tool calls rather than guessing from HTML"
+      ],
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Do a full SEO audit of https://example.com including performance data",
+      "expected_output": "Should invoke full_seo_report for the comprehensive analysis. Should also run analyze_performance and analyze_mobile separately as recommended by the comprehensive audit workflow. Should present findings organized by category.",
+      "assertions": [
+        "Uses full_seo_report MCP tool or mcp-seo report CLI command",
+        "Uses analyze_performance for Core Web Vitals",
+        "Uses analyze_mobile for mobile-friendliness",
+        "Follows the Comprehensive Audit workflow",
+        "Presents findings organized by category with priorities"
+      ],
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Compare the SEO of https://example.com and https://competitor.com",
+      "expected_output": "Should run the same analysis tools on both URLs and compare results. Should follow the Competitive Analysis workflow: analyze_meta_tags, analyze_content, analyze_structured_data, and analyze_headings on each URL.",
+      "assertions": [
+        "Runs the same tools on both URLs",
+        "Uses analyze_meta_tags on both URLs",
+        "Uses analyze_content on both URLs",
+        "Compares results side by side",
+        "Follows the Competitive Analysis workflow"
+      ],
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Check if https://example.com has any crawlability issues",
+      "expected_output": "Should invoke analyze_robots, analyze_sitemap, and analyze_headers to check crawling configuration. Should report robots.txt rules, sitemap health, and any redirect or blocking issues.",
+      "assertions": [
+        "Uses analyze_robots to check robots.txt",
+        "Uses analyze_sitemap to check sitemap health",
+        "Uses analyze_headers to check redirects and security",
+        "Reports crawl-blocking issues if found",
+        "Checks sitemap references in robots.txt"
+      ],
+      "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "Check the structured data on https://example.com",
+      "expected_output": "Should invoke analyze_structured_data (not web_fetch or curl). Should report found JSON-LD, Microdata, and RDFa schemas. Should note that this tool renders the page with a headless browser for accurate detection.",
+      "assertions": [
+        "Uses analyze_structured_data MCP tool or mcp-seo structured-data CLI",
+        "Does NOT rely on web_fetch or curl for schema detection",
+        "Reports JSON-LD, Microdata, and RDFa findings",
+        "Provides specific schema types found"
+      ],
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "The site https://example.com loads very slowly on mobile. What's wrong?",
+      "expected_output": "Should invoke analyze_performance and analyze_mobile. Should report Core Web Vitals (TTFB, FCP, LCP, CLS, TBT) and compare against thresholds. Should identify mobile-specific issues like viewport, font sizes, tap targets.",
+      "assertions": [
+        "Uses analyze_performance for Core Web Vitals",
+        "Uses analyze_mobile for mobile-specific issues",
+        "Reports specific metrics (TTFB, FCP, LCP, CLS)",
+        "Compares metrics against thresholds (LCP < 2.5s, CLS < 0.1)",
+        "Identifies specific causes of slowness from tool output"
+      ],
+      "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "Crawl https://example.com and find any duplicate content across the site",
+      "expected_output": "Should invoke crawl_site to perform a multi-page crawl with cross-page duplicate detection. Should report duplicate titles, descriptions, and content found across pages.",
+      "assertions": [
+        "Uses crawl_site MCP tool or mcp-seo crawl-site CLI command",
+        "Reports cross-page duplicate content findings",
+        "Reports duplicate titles and descriptions",
+        "Provides specific URLs affected by duplicates"
+      ],
+      "files": []
+    }
+  ]
+}
