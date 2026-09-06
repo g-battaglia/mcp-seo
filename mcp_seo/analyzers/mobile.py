@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from pydantic import BaseModel
 
 from mcp_seo.browser import get_browser, get_page
-from mcp_seo.utils import get_logger
+from mcp_seo.utils import get_logger, run_async
 
 logger = get_logger("mobile")
 
@@ -216,7 +214,7 @@ async def _analyze_mobile(url: str) -> MobileAnalysis:
 
 def analyze_mobile(url: str) -> MobileAnalysis:
     """Analyze mobile-friendliness (sync wrapper)."""
-    return asyncio.run(_analyze_mobile(url))
+    return run_async(_analyze_mobile(url))
 
 
 def format_mobile_report(analysis: MobileAnalysis) -> str:

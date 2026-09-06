@@ -10,7 +10,7 @@ from playwright.async_api import Page
 from pydantic import BaseModel
 
 from mcp_seo.browser import get_browser, get_page
-from mcp_seo.utils import get_logger, parse_html_fresh
+from mcp_seo.utils import get_logger, parse_html_fresh, run_async
 
 logger = get_logger("crawler")
 
@@ -349,7 +349,7 @@ async def _crawl_site(
 
 def crawl_site(start_url: str, max_pages: int = 50) -> CrawlResult:
     """Crawl a website (sync wrapper)."""
-    return asyncio.run(_crawl_site(start_url, max_pages=max_pages))
+    return run_async(_crawl_site(start_url, max_pages=max_pages))
 
 
 # ── Report formatter ──────────────────────────────────────────

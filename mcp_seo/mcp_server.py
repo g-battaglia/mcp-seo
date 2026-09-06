@@ -6,7 +6,7 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from mcp_seo.browser import render_page_sync
+from mcp_seo.browser import render_page
 from mcp_seo.fetcher import fetch
 from mcp_seo.utils import ensure_url, get_html, get_logger
 
@@ -27,11 +27,11 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def crawl(url: str) -> str:
+async def crawl(url: str) -> str:
     """Render a page with headless Chromium and return the full rendered HTML.
     Use this when the page is a SPA or uses client-side rendering."""
     url = ensure_url(url)
-    return render_page_sync(url)
+    return await render_page(url)
 
 
 @mcp.tool()
@@ -204,36 +204,32 @@ def analyze_structured_data(url: str) -> str:
 
 
 @mcp.tool()
-def analyze_performance(url: str) -> str:
+async def analyze_performance(url: str) -> str:
     """Measure all Core Web Vitals: TTFB, FCP, LCP, CLS (Cumulative Layout Shift),
     TBT (Total Blocking Time), DOM nodes, total requests, transfer size,
     render-blocking resources, and resource breakdown by type."""
     from mcp_seo.analyzers.performance import (
-        analyze_performance as _analyze,
-    )
-    from mcp_seo.analyzers.performance import (
+        _measure_performance,
         format_performance_report,
     )
 
     url = ensure_url(url)
-    return format_performance_report(_analyze(url))
+    return format_performance_report(await _measure_performance(url))
 
 
 @mcp.tool()
-def analyze_mobile(url: str) -> str:
+async def analyze_mobile(url: str) -> str:
     """Analyze mobile-friendliness: viewport meta, responsive design detection,
     font sizes (<12px check), tap target sizes (48x48dp check), horizontal scroll,
     pinch-to-zoom disabled check, intrusive interstitial detection,
     and content width validation."""
     from mcp_seo.analyzers.mobile import (
-        analyze_mobile as _analyze,
-    )
-    from mcp_seo.analyzers.mobile import (
+        _analyze_mobile,
         format_mobile_report,
     )
 
     url = ensure_url(url)
-    return format_mobile_report(_analyze(url))
+    return format_mobile_report(await _analyze_mobile(url))
 
 
 # ── Tools: URL Structure & Accessibility ─────────────────────
@@ -301,13 +297,13 @@ def full_seo_report(url: str) -> str:
 
 
 @mcp.tool()
-def crawl_site(url: str, max_pages: int = 50) -> str:
+async def crawl_site(url: str, max_pages: int = 50) -> str:
     """Crawl a website discovering pages via internal links.
     Analyzes each page for meta tags, headings, and common SEO issues.
     Returns a site-wide summary with cross-page duplicate detection."""
-    from mcp_seo.crawler import crawl_site as _crawl
+    from mcp_seo.crawler import _crawl_site
     from mcp_seo.crawler import format_crawl_report
 
     url = ensure_url(url)
-    result = _crawl(url, max_pages=max_pages)
+    result = await _crawl_site(url, max_pages=max_pages)
     return format_crawl_report(result)

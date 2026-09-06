@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-
 from pydantic import BaseModel
 
 from mcp_seo.browser import get_browser, get_page
-from mcp_seo.utils import get_logger
+from mcp_seo.utils import get_logger, run_async
 
 logger = get_logger("performance")
 
@@ -186,7 +184,7 @@ async def _measure_performance(url: str) -> PerformanceMetrics:
 
 def analyze_performance(url: str) -> PerformanceMetrics:
     """Measure and analyze page performance (sync wrapper)."""
-    return asyncio.run(_measure_performance(url))
+    return run_async(_measure_performance(url))
 
 
 def format_performance_report(metrics: PerformanceMetrics) -> str:
