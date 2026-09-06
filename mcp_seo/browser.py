@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Literal
 
 from playwright.async_api import Browser, Page, async_playwright
 
-from mcp_seo.utils import get_logger
+from mcp_seo.utils import get_logger, run_async
 
 logger = get_logger("browser")
 
@@ -98,9 +97,9 @@ async def take_screenshot(
 
 def render_page_sync(url: str, **kwargs) -> str:
     """Synchronous wrapper for render_page."""
-    return asyncio.run(render_page(url, **kwargs))
+    return run_async(render_page(url, **kwargs))
 
 
 def take_screenshot_sync(url: str, output_path: str, **kwargs) -> str:
     """Synchronous wrapper for take_screenshot."""
-    return asyncio.run(take_screenshot(url, output_path, **kwargs))
+    return run_async(take_screenshot(url, output_path, **kwargs))

@@ -2,9 +2,34 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Coroutine
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, TypeVar
 
 from bs4 import BeautifulSoup
+
+_T = TypeVar("_T")
+
+
+def run_async(coro: Coroutine[Any, Any, _T]) -> _T:
+    """Run a coroutine, whether or not an event loop is already running.
+
+    The *_sync wrappers in this package (render_page_sync, crawl_site, etc.) get
+    called from inside FastMCP tool handlers, which already run on their own event
+    loop. A plain `asyncio.run(coro)` there raises "cannot be called from a running
+    event loop". Outside a running loop (CLI usage) this is just `asyncio.run`; with
+    one already running, the coroutine runs on a separate thread with its own loop.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
 
 # ── Logging ───────────────────────────────────────────────────
 
